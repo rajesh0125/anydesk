@@ -1355,3 +1355,5 @@ if (connectId && remoteIdInput) {
 console.log('RemoteDesk Pro initialized with mobile support!');
 console.log('Device type:', deviceType);
 console.log('Touch device:', isTouchDevice);
+
+\\done
