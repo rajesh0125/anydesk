@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>RemoteDesk Pro - Advanced Remote Desktop</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="header">
+        <div class="nav">
+            <div class="logo">
+                <i class="fas fa-desktop"></i>
+                RemoteDesk Pro
+            </div>
+            <div class="nav-links">
+                <a href="#"><i class="fas fa-home"></i> Home</a>
+                <a href="#"><i class="fas fa-star"></i> Features</a>
+                <a href="#"><i class="fas fa-headset"></i> Support</a>
+                <a href="#"><i class="fas fa-download"></i> Download</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <h1>Secure Remote Desktop Access</h1>
+            <p>Connect to any computer, anywhere in the world, instantly and securely</p>
+        </div>
+
+        <div class="cards-container">
+            <!-- Host Card -->
+            <div class="card">
+                <h2><i class="fas fa-broadcast-tower"></i> Start Hosting</h2>
+                <div class="form-group">
+                    <label><i class="fas fa-id-card"></i> Your Connection ID</label>
+                    <input type="text" id="hostId" readonly placeholder="Generating...">
+                    <button id="generateHostId" class="btn-primary" style="margin-top: 10px;">
+                        <i class="fas fa-sync-alt"></i> Generate New ID
+                    </button>
+                </div>
+                <div class="connection-id">
+                    <strong><i class="fas fa-share-alt"></i> Share this ID to allow remote access:</strong>
+                    <div class="id-value" id="displayHostId">Not generated yet</div>
+                    <button id="copyHostId" class="btn-small" style="margin-top: 10px;">
+                        <i class="fas fa-copy"></i> Copy ID
+                    </button>
+                </div>
+                <div id="hostStatus" class="status info">
+                    <i class="fas fa-info-circle"></i> Ready to host. Generate an ID to start.
+                </div>
+            </div>
+
+            <!-- Client Card -->
+            <div class="card">
+                <h2><i class="fas fa-plug"></i> Remote Control</h2>
+                <div class="form-group">
+                    <label><i class="fas fa-key"></i> Enter Remote Connection ID</label>
+                    <input type="text" id="remoteId" placeholder="Enter the host ID">
+                    <button id="connectBtn" class="btn-primary">
+                        <i class="fas fa-link"></i> Connect to Remote
+                    </button>
+                </div>
+                <div id="clientStatus" class="status info">
+                    <i class="fas fa-info-circle"></i> Enter an ID and click connect
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Features Panel -->
+        <div class="advanced-features" id="advancedFeatures" style="display: none;">
+            <div class="features-tabs">
+                <button class="tab-btn active" data-tab="remote">
+                    <i class="fas fa-desktop"></i> Remote Control
+                </button>
+                <button class="tab-btn" data-tab="chat">
+                    <i class="fas fa-comments"></i> Chat
+                    <span class="badge" id="chatBadge" style="display: none;">0</span>
+                </button>
+                <button class="tab-btn" data-tab="files">
+                    <i class="fas fa-file-transfer"></i> File Transfer
+                </button>
+                <button class="tab-btn" data-tab="tools">
+                    <i class="fas fa-tools"></i> Tools
+                </button>
+                <button class="tab-btn" data-tab="settings">
+                    <i class="fas fa-cog"></i> Settings
+                </button>
+            </div>
+
+            <!-- Remote Control Tab -->
+            <div class="tab-content active" id="remoteTab">
+                <div class="remote-view">
+                    <div class="remote-toolbar">
+                        <button id="fullscreenBtn" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button id="screenshotBtn" title="Take Screenshot">
+                            <i class="fas fa-camera"></i>
+                        </button>
+                        <button id="recordBtn" title="Record Session">
+                            <i class="fas fa-video"></i>
+                        </button>
+                        <button id="qualityBtn" title="Quality Settings">
+                            <i class="fas fa-sliders-h"></i>
+                        </button>
+                        <select id="qualitySelect" style="display: none;">
+                            <option value="high">High Quality</option>
+                            <option value="medium" selected>Medium Quality</option>
+                            <option value="low">Low Quality (Fast)</option>
+                        </select>
+                    </div>
+                    <div class="remote-screen">
+                        <canvas id="remoteCanvas"></canvas>
+                        <div id="connectionOverlay" class="connection-overlay" style="display: none;">
+                            <div class="spinner"></div>
+                            <p>Reconnecting...</p>
+                        </div>
+                    </div>
+                    <div class="controls">
+                        <button class="control-btn" id="mouseBtn">
+                            <i class="fas fa-mouse-pointer"></i> Mouse Control
+                        </button>
+                        <button class="control-btn" id="keyboardBtn">
+                            <i class="fas fa-keyboard"></i> Keyboard
+                        </button>
+                        <button class="control-btn" id="ctrlAltDelBtn">
+                            <i class="fas fa-power-off"></i> Ctrl+Alt+Del
+                        </button>
+                        <button class="control-btn" id="lockScreenBtn">
+                            <i class="fas fa-lock"></i> Lock Screen
+                        </button>
+                        <button class="control-btn btn-danger" id="disconnectBtn">
+                            <i class="fas fa-plug"></i> Disconnect
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Tab -->
+            <div class="tab-content" id="chatTab">
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="system-message">
+                            <i class="fas fa-info-circle"></i> Chat session started
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chatInput" placeholder="Type your message...">
+                        <button id="sendChatBtn">
+                            <i class="fas fa-paper-plane"></i> Send
+                        </button>
+                    </div>
+                    <div class="chat-emoji">
+                        <button class="emoji-btn">😊</button>
+                        <button class="emoji-btn">😂</button>
+                        <button class="emoji-btn">👍</button>
+                        <button class="emoji-btn">❤️</button>
+                        <button class="emoji-btn">🎉</button>
+                        <button class="emoji-btn">🙏</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Transfer Tab -->
+            <div class="tab-content" id="filesTab">
+                <div class="file-transfer-container">
+                    <div class="file-transfer-header">
+                        <h3><i class="fas fa-upload"></i> File Transfer</h3>
+                        <div class="transfer-stats" id="transferStats">
+                            <span>0 MB transferred</span>
+                        </div>
+                    </div>
+                    <div class="file-transfer-area">
+                        <div class="file-drop-zone" id="fileDropZone">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Drag & drop files here or click to browse</p>
+                            <input type="file" id="fileInput" multiple style="display: none;">
+                            <button id="browseFilesBtn" class="btn-small">
+                                <i class="fas fa-folder-open"></i> Browse Files
+                            </button>
+                        </div>
+                        <div class="file-list" id="fileList">
+                            <h4>Transfer Queue</h4>
+                            <div id="transferQueue"></div>
+                        </div>
+                    </div>
+                    <div class="shared-files">
+                        <h4><i class="fas fa-download"></i> Received Files</h4>
+                        <div id="receivedFiles"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tools Tab -->
+            <div class="tab-content" id="toolsTab">
+                <div class="tools-grid">
+                    <div class="tool-card">
+                        <i class="fas fa-paint-brush"></i>
+                        <h3>Remote Whiteboard</h3>
+                        <p>Draw and annotate on remote screen</p>
+                        <button id="whiteboardBtn" class="btn-small">Open</button>
+                    </div>
+                    <div class="tool-card">
+                        <i class="fas fa-terminal"></i>
+                        <h3>Remote Terminal</h3>
+                        <p>Execute commands remotely</p>
+                        <button id="terminalBtn" class="btn-small">Open</button>
+                    </div>
+                    <div class="tool-card">
+                        <i class="fas fa-clipboard-list"></i>
+                        <h3>Task Manager</h3>
+                        <p>View and manage remote processes</p>
+                        <button id="taskManagerBtn" class="btn-small">Open</button>
+                    </div>
+                    <div class="tool-card">
+                        <i class="fas fa-microphone"></i>
+                        <h3>Remote Audio</h3>
+                        <p>Stream audio from remote device</p>
+                        <button id="audioBtn" class="btn-small">Enable</button>
+                    </div>
+                    <div class="tool-card">
+                        <i class="fas fa-clipboard"></i>
+                        <h3>Shared Clipboard</h3>
+                        <p>Sync clipboard between devices</p>
+                        <button id="clipboardBtn" class="btn-small">Sync Now</button>
+                    </div>
+                    <div class="tool-card">
+                        <i class="fas fa-mobile-alt"></i>
+                        <h3>Mobile View</h3>
+                        <p>Optimize for mobile devices</p>
+                        <button id="mobileViewBtn" class="btn-small">Switch</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-content" id="settingsTab">
+                <div class="settings-container">
+                    <div class="setting-group">
+                        <h3><i class="fas fa-video"></i> Video Settings</h3>
+                        <label>
+                            <input type="range" id="fpsSlider" min="5" max="30" value="15">
+                            Frame Rate: <span id="fpsValue">15</span> FPS
+                        </label>
+                        <label>
+                            <input type="range" id="qualitySlider" min="10" max="100" value="70">
+                            Quality: <span id="qualityValue">70</span>%
+                        </label>
+                        <label>
+                            <input type="checkbox" id="hardwareAccel"> Enable Hardware Acceleration
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <h3><i class="fas fa-shield-alt"></i> Security Settings</h3>
+                        <label>
+                            <input type="checkbox" id="endToEndEncrypt" checked> End-to-End Encryption
+                        </label>
+                        <label>
+                            <input type="checkbox" id="blockInput"> Block Remote Input When Idle
+                        </label>
+                        <label>
+                            <input type="number" id="idleTimeout" placeholder="Idle timeout (minutes)">
+                            Auto-disconnect after idle (minutes)
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <h3><i class="fas fa-database"></i> Session Recording</h3>
+                        <label>
+                            <input type="checkbox" id="autoRecord"> Auto-record all sessions
+                        </label>
+                        <label>
+                            <input type="text" id="recordPath" placeholder="Save path for recordings">
+                            Save recordings to:
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="whiteboardModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Remote Whiteboard</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <canvas id="whiteboardCanvas" width="800" height="400"></canvas>
+            <div class="whiteboard-tools">
+                <button class="draw-tool" data-tool="pen"><i class="fas fa-pen"></i></button>
+                <button class="draw-tool" data-tool="line"><i class="fas fa-slash"></i></button>
+                <button class="draw-tool" data-tool="rect"><i class="fas fa-square"></i></button>
+                <button class="draw-tool" data-tool="circle"><i class="fas fa-circle"></i></button>
+                <button class="draw-tool" data-tool="text"><i class="fas fa-font"></i></button>
+                <input type="color" id="drawColor" value="#ff0000">
+                <button id="clearWhiteboard"><i class="fas fa-eraser"></i> Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="terminalModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Remote Terminal</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="terminal" id="terminal">
+                <div class="terminal-output" id="terminalOutput">
+                    <div>$ Connected to remote terminal</div>
+                    <div>$ Type commands below</div>
+                </div>
+                <div class="terminal-input">
+                    <span>$</span>
+                    <input type="text" id="terminalCommand" placeholder="Enter command...">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="taskManagerModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Remote Task Manager</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="task-manager">
+                <div class="task-stats">
+                    <div>CPU: <span id="cpuUsage">0%</span></div>
+                    <div>Memory: <span id="memoryUsage">0%</span></div>
+                    <div>Network: <span id="networkUsage">0 KB/s</span></div>
+                </div>
+                <table id="processTable">
+                    <thead>
+                        <tr><th>PID</th><th>Name</th><th>CPU</th><th>Memory</th><th>Action</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>&copy; 2024 RemoteDesk Pro - Advanced Remote Desktop Solution. All rights reserved.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
