@@ -2,10 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>RemoteDesk Pro - Advanced Remote Desktop</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>RemoteDesk Pro - Mobile Remote Desktop</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
     <div class="header">
@@ -14,11 +17,11 @@
                 <i class="fas fa-desktop"></i>
                 RemoteDesk Pro
             </div>
-            <div class="nav-links">
-                <a href="#"><i class="fas fa-home"></i> Home</a>
-                <a href="#"><i class="fas fa-star"></i> Features</a>
-                <a href="#"><i class="fas fa-headset"></i> Support</a>
-                <a href="#"><i class="fas fa-download"></i> Download</a>
+            <div class="nav-links" id="navLinks">
+                <a href="#" class="mobile-hide"><i class="fas fa-home"></i> Home</a>
+                <a href="#" class="mobile-hide"><i class="fas fa-star"></i> Features</a>
+                <a href="#" class="mobile-hide"><i class="fas fa-headset"></i> Support</a>
+                <a href="#" id="mobileMenuToggle" class="mobile-show"><i class="fas fa-bars"></i></a>
             </div>
         </div>
     </div>
@@ -26,25 +29,40 @@
     <div class="container">
         <div class="hero">
             <h1>Secure Remote Desktop Access</h1>
-            <p>Connect to any computer, anywhere in the world, instantly and securely</p>
+            <p>Connect from any device - PC, Tablet, or Mobile</p>
+            <div class="device-badges">
+                <span class="device-badge"><i class="fab fa-windows"></i> Windows</span>
+                <span class="device-badge"><i class="fab fa-apple"></i> Mac</span>
+                <span class="device-badge"><i class="fab fa-android"></i> Android</span>
+                <span class="device-badge"><i class="fab fa-apple"></i> iOS</span>
+            </div>
         </div>
 
         <div class="cards-container">
-            <!-- Host Card -->
+            <!-- Host Card (PC) -->
             <div class="card">
-                <h2><i class="fas fa-broadcast-tower"></i> Start Hosting</h2>
+                <h2><i class="fas fa-broadcast-tower"></i> Start Hosting (PC)</h2>
                 <div class="form-group">
                     <label><i class="fas fa-id-card"></i> Your Connection ID</label>
-                    <input type="text" id="hostId" readonly placeholder="Generating...">
-                    <button id="generateHostId" class="btn-primary" style="margin-top: 10px;">
+                    <div class="input-group">
+                        <input type="text" id="hostId" readonly placeholder="Generating...">
+                        <button id="copyHostId" class="btn-icon">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                    <button id="generateHostId" class="btn-primary">
                         <i class="fas fa-sync-alt"></i> Generate New ID
                     </button>
                 </div>
                 <div class="connection-id">
-                    <strong><i class="fas fa-share-alt"></i> Share this ID to allow remote access:</strong>
+                    <strong><i class="fas fa-share-alt"></i> Share this ID:</strong>
                     <div class="id-value" id="displayHostId">Not generated yet</div>
-                    <button id="copyHostId" class="btn-small" style="margin-top: 10px;">
-                        <i class="fas fa-copy"></i> Copy ID
+                    <div class="qr-code" id="qrCode" style="display: none;">
+                        <canvas id="qrCanvas"></canvas>
+                        <p>Scan with mobile device</p>
+                    </div>
+                    <button id="showQrBtn" class="btn-small">
+                        <i class="fas fa-qrcode"></i> Show QR Code
                     </button>
                 </div>
                 <div id="hostStatus" class="status info">
@@ -52,9 +70,17 @@
                 </div>
             </div>
 
-            <!-- Client Card -->
+            <!-- Client Card (Mobile/PC) -->
             <div class="card">
                 <h2><i class="fas fa-plug"></i> Remote Control</h2>
+                <div class="device-type-selector">
+                    <button class="device-type-btn active" data-device="pc">
+                        <i class="fas fa-desktop"></i> PC
+                    </button>
+                    <button class="device-type-btn" data-device="mobile">
+                        <i class="fas fa-mobile-alt"></i> Mobile
+                    </button>
+                </div>
                 <div class="form-group">
                     <label><i class="fas fa-key"></i> Enter Remote Connection ID</label>
                     <input type="text" id="remoteId" placeholder="Enter the host ID">
@@ -68,24 +94,66 @@
             </div>
         </div>
 
+        <!-- Mobile Connection Guide -->
+        <div class="mobile-guide" id="mobileGuide" style="display: none;">
+            <div class="guide-content">
+                <h3><i class="fas fa-mobile-alt"></i> Mobile Connection Guide</h3>
+                <div class="guide-steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-text">Open this website on your mobile device</div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-text">Enter the Host ID shown on the PC</div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-text">Use touch gestures to control</div>
+                    </div>
+                </div>
+                <div class="gesture-guide">
+                    <h4>Touch Gestures:</h4>
+                    <div class="gesture-grid">
+                        <div class="gesture">
+                            <i class="fas fa-fingerprint"></i>
+                            <span>Tap = Click</span>
+                        </div>
+                        <div class="gesture">
+                            <i class="fas fa-hand-peace"></i>
+                            <span>Two fingers = Right Click</span>
+                        </div>
+                        <div class="gesture">
+                            <i class="fas fa-arrows-alt"></i>
+                            <span>Drag = Move Mouse</span>
+                        </div>
+                        <div class="gesture">
+                            <i class="fas fa-hand-peace fa-flip-horizontal"></i>
+                            <span>Pinch = Zoom</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Advanced Features Panel -->
         <div class="advanced-features" id="advancedFeatures" style="display: none;">
             <div class="features-tabs">
                 <button class="tab-btn active" data-tab="remote">
-                    <i class="fas fa-desktop"></i> Remote Control
+                    <i class="fas fa-desktop"></i> <span class="tab-text">Remote</span>
                 </button>
                 <button class="tab-btn" data-tab="chat">
-                    <i class="fas fa-comments"></i> Chat
+                    <i class="fas fa-comments"></i> <span class="tab-text">Chat</span>
                     <span class="badge" id="chatBadge" style="display: none;">0</span>
                 </button>
                 <button class="tab-btn" data-tab="files">
-                    <i class="fas fa-file-transfer"></i> File Transfer
+                    <i class="fas fa-file-transfer"></i> <span class="tab-text">Files</span>
+                </button>
+                <button class="tab-btn" data-tab="gestures">
+                    <i class="fas fa-hand-peace"></i> <span class="tab-text">Gestures</span>
                 </button>
                 <button class="tab-btn" data-tab="tools">
-                    <i class="fas fa-tools"></i> Tools
-                </button>
-                <button class="tab-btn" data-tab="settings">
-                    <i class="fas fa-cog"></i> Settings
+                    <i class="fas fa-tools"></i> <span class="tab-text">Tools</span>
                 </button>
             </div>
 
@@ -102,8 +170,17 @@
                         <button id="recordBtn" title="Record Session">
                             <i class="fas fa-video"></i>
                         </button>
-                        <button id="qualityBtn" title="Quality Settings">
-                            <i class="fas fa-sliders-h"></i>
+                        <button id="touchModeBtn" title="Touch Mode" class="active">
+                            <i class="fas fa-hand-peace"></i>
+                        </button>
+                        <button id="zoomInBtn" title="Zoom In">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button id="zoomOutBtn" title="Zoom Out">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <button id="resetViewBtn" title="Reset View">
+                            <i class="fas fa-sync-alt"></i>
                         </button>
                         <select id="qualitySelect" style="display: none;">
                             <option value="high">High Quality</option>
@@ -111,8 +188,13 @@
                             <option value="low">Low Quality (Fast)</option>
                         </select>
                     </div>
-                    <div class="remote-screen">
-                        <canvas id="remoteCanvas"></canvas>
+                    <div class="remote-screen-container" id="remoteScreenContainer">
+                        <div class="remote-screen">
+                            <canvas id="remoteCanvas"></canvas>
+                            <div id="touchOverlay" class="touch-overlay">
+                                <div class="touch-indicator" id="touchIndicator"></div>
+                            </div>
+                        </div>
                         <div id="connectionOverlay" class="connection-overlay" style="display: none;">
                             <div class="spinner"></div>
                             <p>Reconnecting...</p>
@@ -120,19 +202,22 @@
                     </div>
                     <div class="controls">
                         <button class="control-btn" id="mouseBtn">
-                            <i class="fas fa-mouse-pointer"></i> Mouse Control
+                            <i class="fas fa-mouse-pointer"></i> <span class="btn-text">Mouse</span>
                         </button>
                         <button class="control-btn" id="keyboardBtn">
-                            <i class="fas fa-keyboard"></i> Keyboard
+                            <i class="fas fa-keyboard"></i> <span class="btn-text">Keyboard</span>
+                        </button>
+                        <button class="control-btn" id="rightClickBtn">
+                            <i class="fas fa-hand-peace"></i> <span class="btn-text">Right Click</span>
                         </button>
                         <button class="control-btn" id="ctrlAltDelBtn">
-                            <i class="fas fa-power-off"></i> Ctrl+Alt+Del
+                            <i class="fas fa-power-off"></i> <span class="btn-text">Ctrl+Alt+Del</span>
                         </button>
-                        <button class="control-btn" id="lockScreenBtn">
-                            <i class="fas fa-lock"></i> Lock Screen
+                        <button class="control-btn" id="showGesturesBtn">
+                            <i class="fas fa-question-circle"></i> <span class="btn-text">Gestures</span>
                         </button>
                         <button class="control-btn btn-danger" id="disconnectBtn">
-                            <i class="fas fa-plug"></i> Disconnect
+                            <i class="fas fa-plug"></i> <span class="btn-text">Disconnect</span>
                         </button>
                     </div>
                 </div>
@@ -149,7 +234,7 @@
                     <div class="chat-input-area">
                         <input type="text" id="chatInput" placeholder="Type your message...">
                         <button id="sendChatBtn">
-                            <i class="fas fa-paper-plane"></i> Send
+                            <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
                     <div class="chat-emoji">
@@ -175,10 +260,10 @@
                     <div class="file-transfer-area">
                         <div class="file-drop-zone" id="fileDropZone">
                             <i class="fas fa-cloud-upload-alt"></i>
-                            <p>Drag & drop files here or click to browse</p>
+                            <p>Tap to select files</p>
                             <input type="file" id="fileInput" multiple style="display: none;">
                             <button id="browseFilesBtn" class="btn-small">
-                                <i class="fas fa-folder-open"></i> Browse Files
+                                <i class="fas fa-folder-open"></i> Browse
                             </button>
                         </div>
                         <div class="file-list" id="fileList">
@@ -186,9 +271,76 @@
                             <div id="transferQueue"></div>
                         </div>
                     </div>
-                    <div class="shared-files">
-                        <h4><i class="fas fa-download"></i> Received Files</h4>
-                        <div id="receivedFiles"></div>
+                </div>
+            </div>
+
+            <!-- Gestures Tab -->
+            <div class="tab-content" id="gesturesTab">
+                <div class="gestures-guide-full">
+                    <h3><i class="fas fa-hand-peace"></i> Touch Gestures Guide</h3>
+                    <div class="gestures-grid">
+                        <div class="gesture-card">
+                            <div class="gesture-icon">
+                                <i class="fas fa-fingerprint"></i>
+                            </div>
+                            <h4>Single Tap</h4>
+                            <p>Left click / Select</p>
+                            <div class="gesture-demo">👆 Tap anywhere</div>
+                        </div>
+                        <div class="gesture-card">
+                            <div class="gesture-icon">
+                                <i class="fas fa-hand-peace"></i>
+                            </div>
+                            <h4>Two-Finger Tap</h4>
+                            <p>Right click / Context menu</p>
+                            <div class="gesture-demo">✌️ Two fingers tap</div>
+                        </div>
+                        <div class="gesture-card">
+                            <div class="gesture-icon">
+                                <i class="fas fa-arrows-alt"></i>
+                            </div>
+                            <h4>Drag</h4>
+                            <p>Move mouse / Scroll</p>
+                            <div class="gesture-demo">👆 Drag to move</div>
+                        </div>
+                        <div class="gesture-card">
+                            <div class="gesture-icon">
+                                <i class="fas fa-hand-peace fa-flip-horizontal"></i>
+                            </div>
+                            <h4>Pinch to Zoom</h4>
+                            <p>Zoom in/out on screen</p>
+                            <div class="gesture-demo">🤏 Pinch gesture</div>
+                        </div>
+                        <div class="gesture-card">
+                            <div class="gesture-icon">
+                                <i class="fas fa-long-arrow-alt-down"></i>
+                            </div>
+                            <h4>Two-Finger Scroll</h4>
+                            <p>Scroll pages</p>
+                            <div class="gesture-demo">✌️ Swipe up/down</div>
+                        </div>
+                        <div class="gesture-card">
+                            <div class="gesture-icon">
+                                <i class="fas fa-tap"></i>
+                            </div>
+                            <h4>Long Press</h4>
+                            <p>Drag and drop</p>
+                            <div class="gesture-demo">👆 Hold and drag</div>
+                        </div>
+                    </div>
+                    <div class="virtual-controls">
+                        <h4><i class="fas fa-gamepad"></i> Virtual Controls (Mobile)</h4>
+                        <div class="virtual-buttons">
+                            <button class="virtual-btn" data-key="Escape">ESC</button>
+                            <button class="virtual-btn" data-key="Tab">TAB</button>
+                            <button class="virtual-btn" data-key="Enter">ENTER</button>
+                            <button class="virtual-btn" data-key=" ">SPACE</button>
+                            <button class="virtual-btn" data-key="Backspace">⌫</button>
+                            <button class="virtual-btn" data-key="ArrowUp">▲</button>
+                            <button class="virtual-btn" data-key="ArrowDown">▼</button>
+                            <button class="virtual-btn" data-key="ArrowLeft">◀</button>
+                            <button class="virtual-btn" data-key="ArrowRight">▶</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -199,152 +351,102 @@
                     <div class="tool-card">
                         <i class="fas fa-paint-brush"></i>
                         <h3>Remote Whiteboard</h3>
-                        <p>Draw and annotate on remote screen</p>
+                        <p>Draw on remote screen</p>
                         <button id="whiteboardBtn" class="btn-small">Open</button>
                     </div>
                     <div class="tool-card">
                         <i class="fas fa-terminal"></i>
                         <h3>Remote Terminal</h3>
-                        <p>Execute commands remotely</p>
+                        <p>Execute commands</p>
                         <button id="terminalBtn" class="btn-small">Open</button>
                     </div>
                     <div class="tool-card">
                         <i class="fas fa-clipboard-list"></i>
                         <h3>Task Manager</h3>
-                        <p>View and manage remote processes</p>
+                        <p>Manage processes</p>
                         <button id="taskManagerBtn" class="btn-small">Open</button>
                     </div>
                     <div class="tool-card">
                         <i class="fas fa-microphone"></i>
                         <h3>Remote Audio</h3>
-                        <p>Stream audio from remote device</p>
+                        <p>Stream audio</p>
                         <button id="audioBtn" class="btn-small">Enable</button>
                     </div>
                     <div class="tool-card">
                         <i class="fas fa-clipboard"></i>
                         <h3>Shared Clipboard</h3>
-                        <p>Sync clipboard between devices</p>
-                        <button id="clipboardBtn" class="btn-small">Sync Now</button>
+                        <p>Sync clipboard</p>
+                        <button id="clipboardBtn" class="btn-small">Sync</button>
                     </div>
                     <div class="tool-card">
-                        <i class="fas fa-mobile-alt"></i>
-                        <h3>Mobile View</h3>
-                        <p>Optimize for mobile devices</p>
-                        <button id="mobileViewBtn" class="btn-small">Switch</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Settings Tab -->
-            <div class="tab-content" id="settingsTab">
-                <div class="settings-container">
-                    <div class="setting-group">
-                        <h3><i class="fas fa-video"></i> Video Settings</h3>
-                        <label>
-                            <input type="range" id="fpsSlider" min="5" max="30" value="15">
-                            Frame Rate: <span id="fpsValue">15</span> FPS
-                        </label>
-                        <label>
-                            <input type="range" id="qualitySlider" min="10" max="100" value="70">
-                            Quality: <span id="qualityValue">70</span>%
-                        </label>
-                        <label>
-                            <input type="checkbox" id="hardwareAccel"> Enable Hardware Acceleration
-                        </label>
-                    </div>
-                    <div class="setting-group">
-                        <h3><i class="fas fa-shield-alt"></i> Security Settings</h3>
-                        <label>
-                            <input type="checkbox" id="endToEndEncrypt" checked> End-to-End Encryption
-                        </label>
-                        <label>
-                            <input type="checkbox" id="blockInput"> Block Remote Input When Idle
-                        </label>
-                        <label>
-                            <input type="number" id="idleTimeout" placeholder="Idle timeout (minutes)">
-                            Auto-disconnect after idle (minutes)
-                        </label>
-                    </div>
-                    <div class="setting-group">
-                        <h3><i class="fas fa-database"></i> Session Recording</h3>
-                        <label>
-                            <input type="checkbox" id="autoRecord"> Auto-record all sessions
-                        </label>
-                        <label>
-                            <input type="text" id="recordPath" placeholder="Save path for recordings">
-                            Save recordings to:
-                        </label>
+                        <i class="fas fa-rotate-left"></i>
+                        <h3>Screen Rotation</h3>
+                        <p>Auto-rotate display</p>
+                        <button id="rotateBtn" class="btn-small">Rotate</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Modals -->
-    <div id="whiteboardModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Remote Whiteboard</h3>
-                <button class="close-modal">&times;</button>
-            </div>
-            <canvas id="whiteboardCanvas" width="800" height="400"></canvas>
-            <div class="whiteboard-tools">
-                <button class="draw-tool" data-tool="pen"><i class="fas fa-pen"></i></button>
-                <button class="draw-tool" data-tool="line"><i class="fas fa-slash"></i></button>
-                <button class="draw-tool" data-tool="rect"><i class="fas fa-square"></i></button>
-                <button class="draw-tool" data-tool="circle"><i class="fas fa-circle"></i></button>
-                <button class="draw-tool" data-tool="text"><i class="fas fa-font"></i></button>
-                <input type="color" id="drawColor" value="#ff0000">
-                <button id="clearWhiteboard"><i class="fas fa-eraser"></i> Clear</button>
-            </div>
+    <!-- Mobile Virtual Keyboard -->
+    <div id="virtualKeyboard" class="virtual-keyboard" style="display: none;">
+        <div class="keyboard-header">
+            <span>Virtual Keyboard</span>
+            <button id="closeKeyboard"><i class="fas fa-times"></i></button>
         </div>
-    </div>
-
-    <div id="terminalModal" class="modal" style="display: none;">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h3>Remote Terminal</h3>
-                <button class="close-modal">&times;</button>
+        <div class="keyboard-rows">
+            <div class="key-row">
+                <button class="key-btn" data-key="q">q</button>
+                <button class="key-btn" data-key="w">w</button>
+                <button class="key-btn" data-key="e">e</button>
+                <button class="key-btn" data-key="r">r</button>
+                <button class="key-btn" data-key="t">t</button>
+                <button class="key-btn" data-key="y">y</button>
+                <button class="key-btn" data-key="u">u</button>
+                <button class="key-btn" data-key="i">i</button>
+                <button class="key-btn" data-key="o">o</button>
+                <button class="key-btn" data-key="p">p</button>
             </div>
-            <div class="terminal" id="terminal">
-                <div class="terminal-output" id="terminalOutput">
-                    <div>$ Connected to remote terminal</div>
-                    <div>$ Type commands below</div>
-                </div>
-                <div class="terminal-input">
-                    <span>$</span>
-                    <input type="text" id="terminalCommand" placeholder="Enter command...">
-                </div>
+            <div class="key-row">
+                <button class="key-btn" data-key="a">a</button>
+                <button class="key-btn" data-key="s">s</button>
+                <button class="key-btn" data-key="d">d</button>
+                <button class="key-btn" data-key="f">f</button>
+                <button class="key-btn" data-key="g">g</button>
+                <button class="key-btn" data-key="h">h</button>
+                <button class="key-btn" data-key="j">j</button>
+                <button class="key-btn" data-key="k">k</button>
+                <button class="key-btn" data-key="l">l</button>
             </div>
-        </div>
-    </div>
-
-    <div id="taskManagerModal" class="modal" style="display: none;">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h3>Remote Task Manager</h3>
-                <button class="close-modal">&times;</button>
+            <div class="key-row">
+                <button class="key-btn shift-key" data-key="Shift">⇧</button>
+                <button class="key-btn" data-key="z">z</button>
+                <button class="key-btn" data-key="x">x</button>
+                <button class="key-btn" data-key="c">c</button>
+                <button class="key-btn" data-key="v">v</button>
+                <button class="key-btn" data-key="b">b</button>
+                <button class="key-btn" data-key="n">n</button>
+                <button class="key-btn" data-key="m">m</button>
+                <button class="key-btn backspace-key" data-key="Backspace">⌫</button>
             </div>
-            <div class="task-manager">
-                <div class="task-stats">
-                    <div>CPU: <span id="cpuUsage">0%</span></div>
-                    <div>Memory: <span id="memoryUsage">0%</span></div>
-                    <div>Network: <span id="networkUsage">0 KB/s</span></div>
-                </div>
-                <table id="processTable">
-                    <thead>
-                        <tr><th>PID</th><th>Name</th><th>CPU</th><th>Memory</th><th>Action</th></tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+            <div class="key-row">
+                <button class="key-btn key-wide" data-key="Space">Space</button>
+                <button class="key-btn" data-key="Enter">Enter</button>
             </div>
         </div>
     </div>
 
     <footer class="footer">
-        <p>&copy; 2024 RemoteDesk Pro - Advanced Remote Desktop Solution. All rights reserved.</p>
+        <p>&copy; 2024 RemoteDesk Pro - Cross-Platform Remote Desktop Solution</p>
+        <div class="footer-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+            <a href="#">Download App</a>
+        </div>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

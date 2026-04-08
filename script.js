@@ -22,12 +22,20 @@ let isRecording = false;
 let mediaRecorder = null;
 let recordedChunks = [];
 let sessionStartTime = null;
-let idleTimer = null;
 let currentQuality = 'medium';
+
+// Touch/Mobile variables
+let isTouchMode = true;
+let currentZoom = 1;
+let currentPan = { x: 0, y: 0 };
+let isDragging = false;
+let lastTouchDistance = 0;
+let touchStartPoint = null;
+let isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+let deviceType = 'pc'; // 'pc' or 'mobile'
 
 // File transfer variables
 let activeTransfers = new Map();
-let receivedFiles = [];
 
 // Chat variables
 let chatMessages = [];
@@ -45,17 +53,708 @@ const remoteCanvas = document.getElementById('remoteCanvas');
 const disconnectBtn = document.getElementById('disconnectBtn');
 const mouseBtn = document.getElementById('mouseBtn');
 const keyboardBtn = document.getElementById('keyboardBtn');
-const sessionStatus = document.getElementById('sessionStatus');
 const advancedFeatures = document.getElementById('advancedFeatures');
 const copyHostIdBtn = document.getElementById('copyHostId');
+const showQrBtn = document.getElementById('showQrBtn');
+const qrCodeDiv = document.getElementById('qrCode');
+const mobileGuide = document.getElementById('mobileGuide');
+const touchOverlay = document.getElementById('touchOverlay');
+const touchIndicator = document.getElementById('touchIndicator');
+const remoteScreenContainer = document.getElementById('remoteScreenContainer');
+const zoomInBtn = document.getElementById('zoomInBtn');
+const zoomOutBtn = document.getElementById('zoomOutBtn');
+const resetViewBtn = document.getElementById('resetViewBtn');
+const touchModeBtn = document.getElementById('touchModeBtn');
+const rightClickBtn = document.getElementById('rightClickBtn');
+const showGesturesBtn = document.getElementById('showGesturesBtn');
+const rotateBtn = document.getElementById('rotateBtn');
+const virtualKeyboard = document.getElementById('virtualKeyboard');
+const closeKeyboardBtn = document.getElementById('closeKeyboard');
 
 let ctx = null;
+let screenWidth = 0;
+let screenHeight = 0;
+let isShiftPressed = false;
+
 if (remoteCanvas) {
     ctx = remoteCanvas.getContext('2d');
 }
 
-// Initialize all advanced features
-function initAdvancedFeatures() {
+// Detect device type
+function detectDeviceType() {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    if (/android/i.test(userAgent)) {
+        return 'mobile';
+    }
+    if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+        return 'mobile';
+    }
+    return 'pc';
+}
+
+deviceType = detectDeviceType();
+
+// Initialize mobile features
+function initMobileFeatures() {
+    if (deviceType === 'mobile') {
+        document.body.classList.add('mobile-device');
+        document.querySelector('.device-type-btn[data-device="mobile"]').click();
+        mobileGuide.style.display = 'block';
+        
+        // Request mobile view optimization
+        const metaViewport = document.querySelector('meta[name="viewport"]');
+        if (metaViewport) {
+            metaViewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
+        }
+    }
+}
+
+// Generate QR Code for host ID
+function generateQRCode(text) {
+    const qrCanvas = document.getElementById('qrCanvas');
+    if (qrCanvas && typeof QRCode !== 'undefined') {
+        qrCanvas.innerHTML = '';
+        new QRCode(qrCanvas, {
+            text: text,
+            width: 150,
+            height: 150,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    }
+}
+
+// Show QR code
+if (showQrBtn) {
+    showQrBtn.addEventListener('click', () => {
+        const hostId = displayHostId.textContent;
+        if (hostId && hostId !== 'Not generated yet') {
+            generateQRCode(hostId);
+            qrCodeDiv.style.display = qrCodeDiv.style.display === 'none' ? 'block' : 'none';
+        } else {
+            showNotification('Please generate a host ID first', 'warning');
+        }
+    });
+}
+
+// Copy host ID
+if (copyHostIdBtn) {
+    copyHostIdBtn.addEventListener('click', () => {
+        const id = displayHostId.textContent;
+        if (id && id !== 'Not generated yet') {
+            navigator.clipboard.writeText(id);
+            showNotification('Connection ID copied!', 'success');
+        }
+    });
+}
+
+// Device type selector
+document.querySelectorAll('.device-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.device-type-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        deviceType = btn.getAttribute('data-device');
+        
+        if (deviceType === 'mobile') {
+            mobileGuide.style.display = 'block';
+            isTouchMode = true;
+            if (touchModeBtn) touchModeBtn.classList.add('active');
+        } else {
+            mobileGuide.style.display = 'none';
+            isTouchMode = false;
+            if (touchModeBtn) touchModeBtn.classList.remove('active');
+        }
+    });
+});
+
+// Touch gesture handling
+function initTouchGestures() {
+    if (!touchOverlay || !remoteScreenContainer) return;
+    
+    let initialDistance = 0;
+    let initialZoom = 1;
+    let startPan = { x: 0, y: 0 };
+    let isTwoFingerTouch = false;
+    
+    // Touch start
+    touchOverlay.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touches = e.touches;
+        
+        if (touches.length === 1) {
+            // Single touch - mouse move/click
+            isDragging = true;
+            touchStartPoint = getTouchPoint(touches[0]);
+            showTouchIndicator(touches[0].clientX, touches[0].clientY);
+            
+            // Start tracking for potential click
+            touchStartTime = Date.now();
+            
+        } else if (touches.length === 2) {
+            // Two finger touch - zoom/right click
+            isTwoFingerTouch = true;
+            initialDistance = getTouchDistance(touches[0], touches[1]);
+            initialZoom = currentZoom;
+            startPan = { ...currentPan };
+            
+            // Check for two-finger tap (right click)
+            setTimeout(() => {
+                if (isTwoFingerTouch && touches.length === 2) {
+                    const center = getTouchCenter(touches[0], touches[1]);
+                    simulateRightClick(center.x, center.y);
+                    showTouchIndicator(center.x, center.y);
+                }
+            }, 100);
+        }
+    });
+    
+    // Touch move
+    touchOverlay.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touches = e.touches;
+        
+        if (touches.length === 1 && isDragging) {
+            // Drag to move mouse
+            const point = getTouchPoint(touches[0]);
+            const canvasRect = remoteCanvas.getBoundingClientRect();
+            const scaleX = screenWidth / canvasRect.width;
+            const scaleY = screenHeight / canvasRect.height;
+            
+            let x = (point.x - canvasRect.left) * scaleX;
+            let y = (point.y - canvasRect.top) * scaleY;
+            
+            // Apply zoom/pan offset
+            x = x / currentZoom;
+            y = y / currentZoom;
+            
+            simulateMouseMove(x, y);
+            
+        } else if (touches.length === 2) {
+            // Pinch to zoom
+            const distance = getTouchDistance(touches[0], touches[1]);
+            const scale = distance / initialDistance;
+            let newZoom = initialZoom * scale;
+            newZoom = Math.min(Math.max(0.5, newZoom), 3);
+            
+            if (newZoom !== currentZoom) {
+                currentZoom = newZoom;
+                applyZoomAndPan();
+            }
+        }
+    });
+    
+    // Touch end
+    touchOverlay.addEventListener('touchend', (e) => {
+        const wasDragging = isDragging;
+        isDragging = false;
+        
+        if (wasDragging && touchStartPoint && (Date.now() - touchStartTime) < 200) {
+            // Single tap - left click
+            const rect = remoteCanvas.getBoundingClientRect();
+            const scaleX = screenWidth / rect.width;
+            const scaleY = screenHeight / rect.height;
+            let x = (touchStartPoint.x - rect.left) * scaleX;
+            let y = (touchStartPoint.y - rect.top) * scaleY;
+            
+            x = x / currentZoom;
+            y = y / currentZoom;
+            
+            simulateClick(x, y);
+        }
+        
+        isTwoFingerTouch = false;
+        touchStartPoint = null;
+    });
+    
+    // Show touch indicator
+    function showTouchIndicator(x, y) {
+        if (touchIndicator) {
+            touchIndicator.style.left = x + 'px';
+            touchIndicator.style.top = y + 'px';
+            touchIndicator.style.animation = 'none';
+            setTimeout(() => {
+                touchIndicator.style.animation = 'ripple 0.3s ease-out';
+            }, 10);
+        }
+    }
+    
+    // Helper functions
+    function getTouchPoint(touch) {
+        const rect = touchOverlay.getBoundingClientRect();
+        return {
+            x: touch.clientX - rect.left,
+            y: touch.clientY - rect.top
+        };
+    }
+    
+    function getTouchDistance(touch1, touch2) {
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    function getTouchCenter(touch1, touch2) {
+        return {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2
+        };
+    }
+}
+
+// Zoom and pan controls
+function applyZoomAndPan() {
+    if (!remoteScreenContainer || !remoteCanvas) return;
+    
+    const container = remoteScreenContainer;
+    const screen = document.querySelector('.remote-screen');
+    
+    if (screen) {
+        screen.style.transform = `translate(${currentPan.x}px, ${currentPan.y}px) scale(${currentZoom})`;
+    }
+}
+
+function zoomIn() {
+    currentZoom = Math.min(currentZoom + 0.2, 3);
+    applyZoomAndPan();
+}
+
+function zoomOut() {
+    currentZoom = Math.max(currentZoom - 0.2, 0.5);
+    applyZoomAndPan();
+}
+
+function resetView() {
+    currentZoom = 1;
+    currentPan = { x: 0, y: 0 };
+    applyZoomAndPan();
+}
+
+if (zoomInBtn) zoomInBtn.addEventListener('click', zoomIn);
+if (zoomOutBtn) zoomOutBtn.addEventListener('click', zoomOut);
+if (resetViewBtn) resetViewBtn.addEventListener('click', resetView);
+
+// Touch mode toggle
+if (touchModeBtn) {
+    touchModeBtn.addEventListener('click', () => {
+        isTouchMode = !isTouchMode;
+        touchModeBtn.classList.toggle('active', isTouchMode);
+        if (touchOverlay) {
+            touchOverlay.style.display = isTouchMode ? 'block' : 'none';
+        }
+        showNotification(`Touch mode ${isTouchMode ? 'enabled' : 'disabled'}`, 'info');
+    });
+}
+
+// Right click button (for non-touch devices)
+if (rightClickBtn) {
+    rightClickBtn.addEventListener('click', () => {
+        if (remoteCanvas) {
+            const rect = remoteCanvas.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            simulateRightClick(centerX, centerY);
+        }
+    });
+}
+
+// Show gestures guide
+if (showGesturesBtn) {
+    showGesturesBtn.addEventListener('click', () => {
+        document.querySelector('.tab-btn[data-tab="gestures"]').click();
+    });
+}
+
+// Screen rotation
+let rotationAngle = 0;
+if (rotateBtn) {
+    rotateBtn.addEventListener('click', () => {
+        rotationAngle = (rotationAngle + 90) % 360;
+        if (remoteCanvas) {
+            remoteCanvas.style.transform = `rotate(${rotationAngle}deg)`;
+        }
+        showNotification(`Screen rotated ${rotationAngle}°`, 'info');
+    });
+}
+
+// Virtual keyboard
+function initVirtualKeyboard() {
+    if (!virtualKeyboard) return;
+    
+    const keyboardBtn = document.getElementById('keyboardBtn');
+    if (keyboardBtn) {
+        keyboardBtn.addEventListener('click', () => {
+            if (deviceType === 'mobile' || isTouchDevice) {
+                virtualKeyboard.style.display = virtualKeyboard.style.display === 'none' ? 'block' : 'none';
+            } else {
+                // For PC, focus on keyboard input
+                alert('For PC control, physical keyboard is recommended');
+            }
+        });
+    }
+    
+    if (closeKeyboardBtn) {
+        closeKeyboardBtn.addEventListener('click', () => {
+            virtualKeyboard.style.display = 'none';
+        });
+    }
+    
+    // Key buttons
+    document.querySelectorAll('.key-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            let key = btn.getAttribute('data-key');
+            if (key === 'Shift') {
+                isShiftPressed = !isShiftPressed;
+                btn.style.background = isShiftPressed ? '#667eea' : '#505050';
+                
+                // Update key labels
+                document.querySelectorAll('.key-btn').forEach(k => {
+                    if (k.getAttribute('data-key') && k.getAttribute('data-key').length === 1) {
+                        const originalKey = k.getAttribute('data-key');
+                        if (isShiftPressed) {
+                            k.textContent = originalKey.toUpperCase();
+                        } else {
+                            k.textContent = originalKey.toLowerCase();
+                        }
+                    }
+                });
+            } else if (key === 'Space') {
+                simulateKeyPress(' ');
+            } else if (key === 'Backspace') {
+                simulateKeyPress('Backspace');
+            } else if (key === 'Enter') {
+                simulateKeyPress('Enter');
+            } else {
+                const finalKey = isShiftPressed ? key.toUpperCase() : key.toLowerCase();
+                simulateKeyPress(finalKey);
+            }
+        });
+    });
+}
+
+// Simulate mouse events
+function simulateMouseMove(x, y) {
+    sendViaDataChannel({
+        type: 'mouse_move',
+        x: Math.round(x),
+        y: Math.round(y),
+        timestamp: Date.now()
+    });
+}
+
+function simulateClick(x, y) {
+    sendViaDataChannel({
+        type: 'mouse_click',
+        x: Math.round(x),
+        y: Math.round(y),
+        button: 'left',
+        timestamp: Date.now()
+    });
+    showTouchFeedback(x, y);
+}
+
+function simulateRightClick(x, y) {
+    sendViaDataChannel({
+        type: 'mouse_click',
+        x: Math.round(x),
+        y: Math.round(y),
+        button: 'right',
+        timestamp: Date.now()
+    });
+    showNotification('Right click sent', 'info');
+}
+
+function simulateKeyPress(key) {
+    sendViaDataChannel({
+        type: 'key_press',
+        key: key,
+        shift: isShiftPressed,
+        timestamp: Date.now()
+    });
+    showNotification(`Key: ${key}`, 'info');
+}
+
+function showTouchFeedback(x, y) {
+    if (touchIndicator) {
+        touchIndicator.style.left = x + 'px';
+        touchIndicator.style.top = y + 'px';
+        touchIndicator.style.animation = 'none';
+        setTimeout(() => {
+            touchIndicator.style.animation = 'ripple 0.3s ease-out';
+        }, 10);
+    }
+}
+
+// WebRTC Functions
+async function initAsHost() {
+    try {
+        currentRole = 'host';
+        connectionId = generateConnectionId();
+        hostIdInput.value = connectionId;
+        displayHostId.textContent = connectionId;
+        
+        // Generate QR code for mobile connection
+        generateQRCode(window.location.href + '?connect=' + connectionId);
+        
+        localStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                cursor: 'always',
+                displaySurface: 'monitor'
+            },
+            audio: true
+        });
+        
+        // Get screen dimensions
+        const videoTrack = localStream.getVideoTracks()[0];
+        const settings = videoTrack.getSettings();
+        screenWidth = settings.width;
+        screenHeight = settings.height;
+        
+        localPeerConnection = new RTCPeerConnection(configuration);
+        
+        // Create data channel
+        dataChannel = localPeerConnection.createDataChannel('remote-control');
+        setupDataChannel(dataChannel);
+        
+        localStream.getTracks().forEach(track => {
+            localPeerConnection.addTrack(track, localStream);
+        });
+        
+        localPeerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                storeCandidate('host', event.candidate);
+            }
+        };
+        
+        localPeerConnection.onconnectionstatechange = () => {
+            if (localPeerConnection.connectionState === 'connected') {
+                updateStatus('host', 'Client connected!', 'success');
+                advancedFeatures.style.display = 'block';
+                sessionStartTime = Date.now();
+                showNotification('Remote client connected!', 'success');
+            } else if (localPeerConnection.connectionState === 'disconnected') {
+                endSession();
+            }
+        };
+        
+        const offer = await localPeerConnection.createOffer();
+        await localPeerConnection.setLocalDescription(offer);
+        
+        localStorage.setItem(`offer_${connectionId}`, JSON.stringify(offer));
+        updateStatus('host', 'Host ready. Share the ID with client.', 'success');
+        
+        // Auto-remove after 30 minutes
+        setTimeout(() => {
+            if (localPeerConnection?.connectionState !== 'connected') {
+                localStorage.removeItem(`offer_${connectionId}`);
+            }
+        }, 1800000);
+        
+    } catch (error) {
+        console.error('Error initializing host:', error);
+        updateStatus('host', 'Error: ' + error.message, 'error');
+    }
+}
+
+async function connectAsClient(hostId) {
+    try {
+        const offerData = localStorage.getItem(`offer_${hostId}`);
+        if (!offerData) {
+            throw new Error('No active session found. Please check the ID.');
+        }
+        
+        const offer = JSON.parse(offerData);
+        
+        remotePeerConnection = new RTCPeerConnection(configuration);
+        
+        remotePeerConnection.ondatachannel = (event) => {
+            dataChannel = event.channel;
+            setupDataChannel(dataChannel);
+        };
+        
+        remotePeerConnection.ontrack = (event) => {
+            remoteStream = event.streams[0];
+            displayRemoteStream(remoteStream);
+            updateStatus('client', 'Connected!', 'success');
+            advancedFeatures.style.display = 'block';
+            sessionView.style.display = 'block';
+            sessionStartTime = Date.now();
+            
+            // Enable touch mode for mobile devices
+            if (deviceType === 'mobile' || isTouchDevice) {
+                isTouchMode = true;
+                if (touchModeBtn) touchModeBtn.classList.add('active');
+                if (touchOverlay) touchOverlay.style.display = 'block';
+            }
+        };
+        
+        remotePeerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                storeCandidate('client', event.candidate);
+            }
+        };
+        
+        await remotePeerConnection.setRemoteDescription(offer);
+        const answer = await remotePeerConnection.createAnswer();
+        await remotePeerConnection.setLocalDescription(answer);
+        
+        updateStatus('client', 'Connected to remote host!', 'success');
+        
+    } catch (error) {
+        console.error('Error connecting:', error);
+        updateStatus('client', 'Connection failed: ' + error.message, 'error');
+    }
+}
+
+function setupDataChannel(channel) {
+    channel.onopen = () => {
+        console.log('Data channel opened');
+        showNotification('Control channel established', 'success');
+    };
+    
+    channel.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleDataChannelMessage(data);
+    };
+    
+    channel.onclose = () => {
+        console.log('Data channel closed');
+    };
+}
+
+function handleDataChannelMessage(data) {
+    switch(data.type) {
+        case 'mouse_move':
+            // In a real implementation, this would control the remote mouse
+            console.log(`Mouse move to ${data.x}, ${data.y}`);
+            break;
+        case 'mouse_click':
+            console.log(`Mouse click at ${data.x}, ${data.y} (${data.button})`);
+            if (data.button === 'right') {
+                showNotification('Right click received', 'info');
+            }
+            break;
+        case 'key_press':
+            console.log(`Key press: ${data.key}`);
+            showNotification(`Key pressed: ${data.key}`, 'info');
+            break;
+        case 'chat':
+            if (window.addChatMessage) {
+                window.addChatMessage(data.message);
+            }
+            break;
+        case 'file':
+            if (window.receiveFile) {
+                window.receiveFile(data);
+            }
+            break;
+        case 'ctrl_alt_del':
+            showNotification('Ctrl+Alt+Del received', 'warning');
+            break;
+        case 'lock_screen':
+            showNotification('Lock screen command received', 'info');
+            break;
+        case 'clipboard':
+            navigator.clipboard.writeText(data.content);
+            showNotification('Clipboard updated from remote', 'success');
+            break;
+    }
+}
+
+function displayRemoteStream(stream) {
+    if (!remoteCanvas || !ctx) return;
+    
+    remoteVideoElement = document.createElement('video');
+    remoteVideoElement.srcObject = stream;
+    remoteVideoElement.autoplay = true;
+    remoteVideoElement.playsInline = true;
+    remoteVideoElement.muted = true;
+    
+    remoteVideoElement.onloadedmetadata = () => {
+        screenWidth = remoteVideoElement.videoWidth;
+        screenHeight = remoteVideoElement.videoHeight;
+        remoteCanvas.width = screenWidth;
+        remoteCanvas.height = screenHeight;
+        remoteVideoElement.play();
+        drawFrame();
+    };
+    
+    function drawFrame() {
+        if (remoteVideoElement && remoteVideoElement.videoWidth) {
+            ctx.drawImage(remoteVideoElement, 0, 0, remoteCanvas.width, remoteCanvas.height);
+        }
+        requestAnimationFrame(drawFrame);
+    }
+}
+
+function generateConnectionId() {
+    return Math.random().toString(36).substring(2, 10).toUpperCase();
+}
+
+function updateStatus(role, message, type) {
+    const statusElement = role === 'host' ? hostStatus : clientStatus;
+    if (statusElement) {
+        statusElement.innerHTML = `<i class="fas fa-info-circle"></i> ${message}`;
+        statusElement.className = `status ${type}`;
+    }
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+        ${message}
+    `;
+    notification.style.cssText = `
+        position: fixed;
+        top: 70px;
+        right: 20px;
+        padding: 12px 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        animation: slideIn 0.3s;
+        border-left: 4px solid ${type === 'success' ? '#48bb78' : type === 'error' ? '#f56565' : '#4299e1'};
+        max-width: 300px;
+    `;
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 3000);
+}
+
+function sendViaDataChannel(data) {
+    if (dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify(data));
+    } else {
+        console.warn('Data channel not ready');
+    }
+}
+
+function storeCandidate(role, candidate) {
+    console.log(`${role} ICE candidate:`, candidate);
+}
+
+function endSession() {
+    if (localPeerConnection) localPeerConnection.close();
+    if (remotePeerConnection) remotePeerConnection.close();
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    if (mediaRecorder && isRecording) mediaRecorder.stop();
+    
+    sessionView.style.display = 'none';
+    advancedFeatures.style.display = 'none';
+    currentRole = null;
+    isRecording = false;
+    
+    updateStatus('host', 'Session ended', 'info');
+    updateStatus('client', 'Disconnected', 'info');
+}
+
+// Initialize all features
+function initAllFeatures() {
+    initMobileFeatures();
+    initTouchGestures();
+    initVirtualKeyboard();
     initTabs();
     initChat();
     initFileTransfer();
@@ -97,17 +796,11 @@ function initChat() {
         chatMessagesDiv.appendChild(messageDiv);
         chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
         
-        // Store message
-        chatMessages.push({ message, type, timestamp: Date.now(), isOwn });
-        
-        // Update badge
         if (!isOwn && document.querySelector('.tab-btn[data-tab="chat"]:not(.active)')) {
             const badge = document.getElementById('chatBadge');
-            const unreadCount = chatMessages.filter(m => !m.isOwn).length;
-            if (unreadCount > 0) {
-                badge.style.display = 'inline-block';
-                badge.textContent = unreadCount;
-            }
+            const unreadCount = (parseInt(badge.textContent) || 0) + 1;
+            badge.style.display = 'inline-block';
+            badge.textContent = unreadCount;
         }
     }
     
@@ -124,22 +817,20 @@ function initChat() {
         }
     }
     
-    sendBtn.addEventListener('click', sendMessage);
-    chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendMessage();
-    });
+    if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+    if (chatInput) {
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    }
     
-    // Emoji buttons
     document.querySelectorAll('.emoji-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            chatInput.value += btn.textContent;
-            chatInput.focus();
+            if (chatInput) chatInput.value += btn.textContent;
         });
     });
     
-    window.addChatMessage = (message) => {
-        addMessage(message, 'text', false);
-    };
+    window.addChatMessage = addMessage;
 }
 
 // File transfer functionality
@@ -149,30 +840,22 @@ function initFileTransfer() {
     const browseBtn = document.getElementById('browseFilesBtn');
     const transferQueue = document.getElementById('transferQueue');
     
-    // Drag and drop
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-    });
+    if (dropZone) {
+        dropZone.addEventListener('click', () => {
+            if (fileInput) fileInput.click();
+        });
+    }
     
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-over');
-    });
-    
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-        const files = Array.from(e.dataTransfer.files);
-        uploadFiles(files);
-    });
-    
-    browseBtn.addEventListener('click', () => {
-        fileInput.click();
-    });
-    
-    fileInput.addEventListener('change', (e) => {
-        uploadFiles(Array.from(e.target.files));
-    });
+    if (browseBtn && fileInput) {
+        browseBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            uploadFiles(files);
+        });
+    }
     
     function uploadFiles(files) {
         files.forEach(file => {
@@ -187,55 +870,47 @@ function initFileTransfer() {
             activeTransfers.set(fileId, transfer);
             updateTransferQueue();
             
-            // Simulate file transfer
-            simulateFileTransfer(file, fileId);
-        });
-    }
-    
-    function simulateFileTransfer(file, fileId) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const transfer = activeTransfers.get(fileId);
-            transfer.progress = 100;
-            transfer.status = 'completed';
-            activeTransfers.set(fileId, transfer);
-            updateTransferQueue();
-            
-            // Send file data via data channel
-            sendViaDataChannel({
-                type: 'file',
-                fileId: fileId,
-                fileName: file.name,
-                fileSize: file.size,
-                fileData: e.target.result
-            });
-            
-            // Remove after 3 seconds
-            setTimeout(() => {
-                activeTransfers.delete(fileId);
-                updateTransferQueue();
-            }, 3000);
-        };
-        reader.readAsDataURL(file);
-        
-        // Simulate progress
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += 10;
-            const transfer = activeTransfers.get(fileId);
-            if (transfer && progress <= 100) {
-                transfer.progress = progress;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const transfer = activeTransfers.get(fileId);
+                transfer.progress = 100;
+                transfer.status = 'completed';
                 activeTransfers.set(fileId, transfer);
                 updateTransferQueue();
-            }
-            if (progress >= 100) clearInterval(interval);
-        }, 200);
+                
+                sendViaDataChannel({
+                    type: 'file',
+                    fileId: fileId,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    fileData: e.target.result
+                });
+                
+                setTimeout(() => {
+                    activeTransfers.delete(fileId);
+                    updateTransferQueue();
+                }, 3000);
+            };
+            reader.readAsDataURL(file);
+            
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                const transfer = activeTransfers.get(fileId);
+                if (transfer && progress <= 100) {
+                    transfer.progress = progress;
+                    activeTransfers.set(fileId, transfer);
+                    updateTransferQueue();
+                }
+                if (progress >= 100) clearInterval(interval);
+            }, 200);
+        });
     }
     
     function updateTransferQueue() {
         if (!transferQueue) return;
         transferQueue.innerHTML = '';
-        activeTransfers.forEach((transfer, id) => {
+        activeTransfers.forEach((transfer) => {
             const transferDiv = document.createElement('div');
             transferDiv.className = 'file-item';
             transferDiv.innerHTML = `
@@ -251,35 +926,6 @@ function initFileTransfer() {
             transferQueue.appendChild(transferDiv);
         });
     }
-    
-    window.receiveFile = (data) => {
-        receivedFiles.push(data);
-        updateReceivedFiles();
-        
-        // Auto-download
-        const link = document.createElement('a');
-        link.href = data.fileData;
-        link.download = data.fileName;
-        link.click();
-    };
-    
-    function updateReceivedFiles() {
-        const receivedDiv = document.getElementById('receivedFiles');
-        if (!receivedDiv) return;
-        receivedDiv.innerHTML = '';
-        receivedFiles.slice(-5).forEach(file => {
-            const fileDiv = document.createElement('div');
-            fileDiv.className = 'file-item';
-            fileDiv.innerHTML = `
-                <div>
-                    <strong>${file.fileName}</strong>
-                    <div>${formatFileSize(file.fileSize)}</div>
-                </div>
-                <button onclick="downloadFile('${file.fileId}')">Download</button>
-            `;
-            receivedDiv.appendChild(fileDiv);
-        });
-    }
 }
 
 // Whiteboard functionality
@@ -287,31 +933,31 @@ function initWhiteboard() {
     const modal = document.getElementById('whiteboardModal');
     const whiteboardBtn = document.getElementById('whiteboardBtn');
     const closeBtns = document.querySelectorAll('.close-modal');
-    const canvas = document.getElementById('whiteboardCanvas');
-    let isDrawing = false;
-    let currentTool = 'pen';
-    let currentColor = '#ff0000';
     
-    if (whiteboardBtn) {
+    if (whiteboardBtn && modal) {
         whiteboardBtn.addEventListener('click', () => {
             modal.style.display = 'flex';
             initWhiteboardCanvas();
         });
+        
+        closeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+        });
     }
     
-    closeBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-    });
-    
     function initWhiteboardCanvas() {
+        const canvas = document.getElementById('whiteboardCanvas');
         if (!canvas) return;
+        
         const ctx = canvas.getContext('2d');
         canvas.width = canvas.offsetWidth;
         canvas.height = 400;
         
+        let isDrawing = false;
         let lastX = 0, lastY = 0;
+        let currentColor = '#ff0000';
         
         function draw(e) {
             if (!isDrawing) return;
@@ -339,14 +985,6 @@ function initWhiteboard() {
         
         canvas.addEventListener('mousemove', draw);
         canvas.addEventListener('mouseup', () => isDrawing = false);
-        canvas.addEventListener('mouseleave', () => isDrawing = false);
-        
-        // Tool selection
-        document.querySelectorAll('.draw-tool').forEach(tool => {
-            tool.addEventListener('click', () => {
-                currentTool = tool.getAttribute('data-tool');
-            });
-        });
         
         const colorPicker = document.getElementById('drawColor');
         if (colorPicker) {
@@ -369,56 +1007,54 @@ function initTerminal() {
     const modal = document.getElementById('terminalModal');
     const terminalBtn = document.getElementById('terminalBtn');
     const closeBtns = document.querySelectorAll('.close-modal');
-    const terminalInput = document.getElementById('terminalCommand');
-    const terminalOutput = document.getElementById('terminalOutput');
     
-    if (terminalBtn) {
+    if (terminalBtn && modal) {
         terminalBtn.addEventListener('click', () => {
             modal.style.display = 'flex';
         });
-    }
-    
-    closeBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            modal.style.display = 'none';
+        
+        closeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
         });
-    });
-    
-    if (terminalInput) {
-        terminalInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const command = terminalInput.value;
-                addTerminalOutput(`$ ${command}`);
-                
-                // Simulate command execution
-                simulateCommand(command);
-                
-                terminalInput.value = '';
-            }
-        });
-    }
-    
-    function addTerminalOutput(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        terminalOutput.appendChild(div);
-        terminalOutput.scrollTop = terminalOutput.scrollHeight;
-    }
-    
-    function simulateCommand(command) {
-        setTimeout(() => {
-            if (command === 'help') {
-                addTerminalOutput('Available commands: help, list, info, clear');
-            } else if (command === 'list') {
-                addTerminalOutput('Desktop\nDocuments\nDownloads\nPictures');
-            } else if (command === 'info') {
-                addTerminalOutput('OS: Remote System\nUptime: ' + formatUptime());
-            } else if (command === 'clear') {
-                terminalOutput.innerHTML = '';
-            } else {
-                addTerminalOutput(`Command not found: ${command}`);
-            }
-        }, 500);
+        
+        const terminalInput = document.getElementById('terminalCommand');
+        const terminalOutput = document.getElementById('terminalOutput');
+        
+        if (terminalInput) {
+            terminalInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const command = terminalInput.value;
+                    addTerminalOutput(`$ ${command}`);
+                    simulateCommand(command);
+                    terminalInput.value = '';
+                }
+            });
+        }
+        
+        function addTerminalOutput(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            terminalOutput.appendChild(div);
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+        
+        function simulateCommand(command) {
+            setTimeout(() => {
+                if (command === 'help') {
+                    addTerminalOutput('Available commands: help, list, info, clear');
+                } else if (command === 'list') {
+                    addTerminalOutput('Desktop\nDocuments\nDownloads\nPictures');
+                } else if (command === 'info') {
+                    addTerminalOutput('OS: Remote System\nUptime: ' + formatUptime());
+                } else if (command === 'clear') {
+                    terminalOutput.innerHTML = '';
+                } else {
+                    addTerminalOutput(`Command not found: ${command}`);
+                }
+            }, 500);
+        }
     }
 }
 
@@ -428,24 +1064,23 @@ function initTaskManager() {
     const taskManagerBtn = document.getElementById('taskManagerBtn');
     const closeBtns = document.querySelectorAll('.close-modal');
     
-    if (taskManagerBtn) {
+    if (taskManagerBtn && modal) {
         taskManagerBtn.addEventListener('click', () => {
             modal.style.display = 'flex';
             updateProcessList();
         });
-    }
-    
-    closeBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            modal.style.display = 'none';
+        
+        closeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
         });
-    });
+    }
     
     function updateProcessList() {
         const tbody = document.querySelector('#processTable tbody');
         if (!tbody) return;
         
-        // Simulate process list
         const processes = [
             { pid: 1, name: 'System', cpu: 2, memory: 0.1 },
             { pid: 4, name: 'explorer.exe', cpu: 1, memory: 50 },
@@ -465,7 +1100,6 @@ function initTaskManager() {
             `;
         });
         
-        // Update stats
         document.getElementById('cpuUsage').textContent = Math.floor(Math.random() * 100) + '%';
         document.getElementById('memoryUsage').textContent = Math.floor(Math.random() * 100) + '%';
         document.getElementById('networkUsage').textContent = Math.floor(Math.random() * 1000) + ' KB/s';
@@ -477,7 +1111,7 @@ function initTaskManager() {
     };
     
     setInterval(() => {
-        if (modal.style.display === 'flex') {
+        if (modal && modal.style.display === 'flex') {
             updateProcessList();
         }
     }, 2000);
@@ -490,123 +1124,93 @@ function initSettings() {
     const qualitySlider = document.getElementById('qualitySlider');
     const qualityValue = document.getElementById('qualityValue');
     
-    if (fpsSlider) {
+    if (fpsSlider && fpsValue) {
         fpsSlider.addEventListener('input', (e) => {
             fpsValue.textContent = e.target.value;
         });
     }
     
-    if (qualitySlider) {
+    if (qualitySlider && qualityValue) {
         qualitySlider.addEventListener('input', (e) => {
             qualityValue.textContent = e.target.value;
-            adjustQuality(e.target.value);
-        });
-    }
-    
-    const idleTimeout = document.getElementById('idleTimeout');
-    if (idleTimeout) {
-        idleTimeout.addEventListener('change', (e) => {
-            setupIdleTimer(e.target.value);
         });
     }
 }
 
-// Remote tools functionality
+// Remote tools
 function initRemoteTools() {
-    // Screenshot
     const screenshotBtn = document.getElementById('screenshotBtn');
     if (screenshotBtn) {
-        screenshotBtn.addEventListener('click', takeScreenshot);
+        screenshotBtn.addEventListener('click', () => {
+            if (remoteCanvas) {
+                const link = document.createElement('a');
+                link.download = `screenshot-${Date.now()}.png`;
+                link.href = remoteCanvas.toDataURL();
+                link.click();
+                showNotification('Screenshot saved!', 'success');
+            }
+        });
     }
     
-    // Recording
     const recordBtn = document.getElementById('recordBtn');
     if (recordBtn) {
         recordBtn.addEventListener('click', toggleRecording);
     }
     
-    // Fullscreen
     const fullscreenBtn = document.getElementById('fullscreenBtn');
     if (fullscreenBtn) {
-        fullscreenBtn.addEventListener('click', toggleFullscreen);
-    }
-    
-    // Quality
-    const qualityBtn = document.getElementById('qualityBtn');
-    const qualitySelect = document.getElementById('qualitySelect');
-    if (qualityBtn) {
-        qualityBtn.addEventListener('click', () => {
-            qualitySelect.style.display = qualitySelect.style.display === 'none' ? 'block' : 'none';
-        });
-    }
-    if (qualitySelect) {
-        qualitySelect.addEventListener('change', (e) => {
-            currentQuality = e.target.value;
-            adjustQuality(currentQuality);
+        fullscreenBtn.addEventListener('click', () => {
+            const remoteView = document.querySelector('.remote-view');
+            if (remoteView) {
+                if (!document.fullscreenElement) {
+                    remoteView.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            }
         });
     }
     
-    // Ctrl+Alt+Del
     const ctrlAltDelBtn = document.getElementById('ctrlAltDelBtn');
     if (ctrlAltDelBtn) {
         ctrlAltDelBtn.addEventListener('click', () => {
-            sendCtrlAltDel();
+            sendViaDataChannel({
+                type: 'ctrl_alt_del',
+                timestamp: Date.now()
+            });
+            showNotification('Ctrl+Alt+Del sent', 'info');
         });
     }
     
-    // Lock Screen
-    const lockScreenBtn = document.getElementById('lockScreenBtn');
-    if (lockScreenBtn) {
-        lockScreenBtn.addEventListener('click', () => {
-            lockRemoteScreen();
-        });
-    }
-    
-    // Clipboard sync
     const clipboardBtn = document.getElementById('clipboardBtn');
     if (clipboardBtn) {
-        clipboardBtn.addEventListener('click', syncClipboard);
+        clipboardBtn.addEventListener('click', () => {
+            navigator.clipboard.readText().then(text => {
+                sendViaDataChannel({
+                    type: 'clipboard',
+                    content: text,
+                    timestamp: Date.now()
+                });
+                showNotification('Clipboard synced!', 'success');
+            }).catch(err => {
+                console.error('Failed to read clipboard:', err);
+            });
+        });
     }
     
-    // Audio
     const audioBtn = document.getElementById('audioBtn');
     if (audioBtn) {
-        audioBtn.addEventListener('click', toggleRemoteAudio);
+        audioBtn.addEventListener('click', () => {
+            if (remoteStream) {
+                const audioTracks = remoteStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    audioTracks[0].enabled = !audioTracks[0].enabled;
+                    audioBtn.style.background = audioTracks[0].enabled ? '' : '#f56565';
+                    showNotification(`Remote audio ${audioTracks[0].enabled ? 'enabled' : 'disabled'}`, 'info');
+                }
+            }
+        });
     }
-    
-    // Mobile view
-    const mobileViewBtn = document.getElementById('mobileViewBtn');
-    if (mobileViewBtn) {
-        mobileViewBtn.addEventListener('click', toggleMobileView);
-    }
-}
-
-// Keyboard shortcuts
-function initKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => {
-        // Ctrl+Shift+C for chat
-        if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-            document.querySelector('.tab-btn[data-tab="chat"]').click();
-        }
-        // Ctrl+Shift+F for file transfer
-        if (e.ctrlKey && e.shiftKey && e.key === 'F') {
-            document.querySelector('.tab-btn[data-tab="files"]').click();
-        }
-        // Esc to exit fullscreen
-        if (e.key === 'Escape' && document.fullscreenElement) {
-            document.exitFullscreen();
-        }
-    });
-}
-
-// Helper functions
-function takeScreenshot() {
-    if (!remoteCanvas) return;
-    const link = document.createElement('a');
-    link.download = `screenshot-${Date.now()}.png`;
-    link.href = remoteCanvas.toDataURL();
-    link.click();
-    showNotification('Screenshot saved!', 'success');
 }
 
 function toggleRecording() {
@@ -614,15 +1218,11 @@ function toggleRecording() {
     
     if (!isRecording) {
         const stream = remoteCanvas.captureStream(30);
-        mediaRecorder = new MediaRecorder(stream, {
-            mimeType: 'video/webm'
-        });
-        
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
         recordedChunks = [];
+        
         mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-                recordedChunks.push(e.data);
-            }
+            if (e.data.size > 0) recordedChunks.push(e.data);
         };
         
         mediaRecorder.onstop = () => {
@@ -647,130 +1247,18 @@ function toggleRecording() {
     }
 }
 
-function toggleFullscreen() {
-    const remoteView = document.querySelector('.remote-view');
-    if (!document.fullscreenElement) {
-        remoteView.requestFullscreen();
-    } else {
-        document.exitFullscreen();
-    }
-}
-
-function adjustQuality(quality) {
-    if (typeof quality === 'string') {
-        switch(quality) {
-            case 'high':
-                remoteCanvas.style.imageRendering = 'auto';
-                break;
-            case 'medium':
-                remoteCanvas.style.imageRendering = 'smooth';
-                break;
-            case 'low':
-                remoteCanvas.style.imageRendering = 'pixelated';
-                break;
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+            document.querySelector('.tab-btn[data-tab="chat"]').click();
         }
-    } else {
-        const qualityPercent = quality / 100;
-        // Adjust canvas rendering quality
-        if (qualityPercent < 0.5) {
-            remoteCanvas.style.imageRendering = 'pixelated';
-        } else {
-            remoteCanvas.style.imageRendering = 'smooth';
+        if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+            document.querySelector('.tab-btn[data-tab="files"]').click();
         }
-    }
-}
-
-function sendCtrlAltDel() {
-    sendViaDataChannel({
-        type: 'ctrl_alt_del',
-        timestamp: Date.now()
+        if (e.key === 'Escape' && document.fullscreenElement) {
+            document.exitFullscreen();
+        }
     });
-    showNotification('Ctrl+Alt+Del sent to remote device', 'info');
-}
-
-function lockRemoteScreen() {
-    sendViaDataChannel({
-        type: 'lock_screen',
-        timestamp: Date.now()
-    });
-    showNotification('Lock screen command sent', 'info');
-}
-
-function syncClipboard() {
-    navigator.clipboard.readText().then(text => {
-        sendViaDataChannel({
-            type: 'clipboard',
-            content: text,
-            timestamp: Date.now()
-        });
-        showNotification('Clipboard synced!', 'success');
-    }).catch(err => {
-        console.error('Failed to read clipboard:', err);
-    });
-}
-
-function toggleRemoteAudio() {
-    const audioBtn = document.getElementById('audioBtn');
-    if (remoteStream) {
-        const audioTracks = remoteStream.getAudioTracks();
-        if (audioTracks.length > 0) {
-            audioTracks[0].enabled = !audioTracks[0].enabled;
-            audioBtn.style.background = audioTracks[0].enabled ? '' : '#f56565';
-            showNotification(`Remote audio ${audioTracks[0].enabled ? 'enabled' : 'disabled'}`, 'info');
-        } else {
-            showNotification('No audio stream available', 'warning');
-        }
-    }
-}
-
-function toggleMobileView() {
-    const remoteCanvas = document.getElementById('remoteCanvas');
-    remoteCanvas.style.width = window.innerWidth < 768 ? '100%' : '';
-    remoteCanvas.style.height = 'auto';
-    showNotification('Mobile view optimized', 'success');
-}
-
-function setupIdleTimer(minutes) {
-    if (idleTimer) clearTimeout(idleTimer);
-    
-    let idleTime = 0;
-    const resetTimer = () => {
-        idleTime = 0;
-    };
-    
-    window.addEventListener('mousemove', resetTimer);
-    window.addEventListener('keypress', resetTimer);
-    
-    idleTimer = setInterval(() => {
-        idleTime++;
-        if (idleTime >= minutes) {
-            showNotification('Session ended due to inactivity', 'warning');
-            endSession();
-        }
-    }, 60000);
-}
-
-function showNotification(message, type) {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.innerHTML = `
-        <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
-        ${message}
-    `;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 12px 20px;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 10000;
-        animation: slideIn 0.3s;
-        border-left: 4px solid ${type === 'success' ? '#48bb78' : type === 'error' ? '#f56565' : '#4299e1'};
-    `;
-    document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 3000);
 }
 
 function formatFileSize(bytes) {
@@ -782,7 +1270,7 @@ function formatFileSize(bytes) {
 }
 
 function formatUptime() {
-    const uptime = process.uptime();
+    const uptime = process.uptime ? process.uptime() : 3600;
     const hours = Math.floor(uptime / 3600);
     const minutes = Math.floor((uptime % 3600) / 60);
     return `${hours}h ${minutes}m`;
@@ -794,226 +1282,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function sendViaDataChannel(data) {
-    if (dataChannel && dataChannel.readyState === 'open') {
-        dataChannel.send(JSON.stringify(data));
-    } else {
-        console.warn('Data channel not ready');
-    }
-}
-
-// Original WebRTC functions (keep from previous version)
-async function initAsHost() {
-    try {
-        currentRole = 'host';
-        connectionId = generateConnectionId();
-        hostIdInput.value = connectionId;
-        displayHostId.textContent = connectionId;
-        
-        localStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true
-        });
-        
-        localPeerConnection = new RTCPeerConnection(configuration);
-        
-        // Create data channel
-        dataChannel = localPeerConnection.createDataChannel('remote-control');
-        setupDataChannel(dataChannel);
-        
-        localStream.getTracks().forEach(track => {
-            localPeerConnection.addTrack(track, localStream);
-        });
-        
-        localPeerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                storeCandidate('host', event.candidate);
-            }
-        };
-        
-        localPeerConnection.onconnectionstatechange = () => {
-            if (localPeerConnection.connectionState === 'connected') {
-                updateStatus('host', 'Client connected!', 'success');
-                advancedFeatures.style.display = 'block';
-                sessionStartTime = Date.now();
-            } else if (localPeerConnection.connectionState === 'disconnected') {
-                endSession();
-            }
-        };
-        
-        const offer = await localPeerConnection.createOffer();
-        await localPeerConnection.setLocalDescription(offer);
-        
-        localStorage.setItem(`offer_${connectionId}`, JSON.stringify(offer));
-        updateStatus('host', 'Host ready. Share the ID with client.', 'success');
-        
-    } catch (error) {
-        console.error('Error initializing host:', error);
-        updateStatus('host', 'Error: ' + error.message, 'error');
-    }
-}
-
-function setupDataChannel(channel) {
-    channel.onopen = () => {
-        console.log('Data channel opened');
-    };
-    
-    channel.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleDataChannelMessage(data);
-    };
-    
-    channel.onclose = () => {
-        console.log('Data channel closed');
-    };
-}
-
-function handleDataChannelMessage(data) {
-    switch(data.type) {
-        case 'chat':
-            if (window.addChatMessage) {
-                window.addChatMessage(data.message);
-            }
-            break;
-        case 'file':
-            if (window.receiveFile) {
-                window.receiveFile(data);
-            }
-            break;
-        case 'ctrl_alt_del':
-            showNotification('Ctrl+Alt+Del received', 'info');
-            break;
-        case 'lock_screen':
-            showNotification('Lock screen command received', 'info');
-            break;
-        case 'clipboard':
-            navigator.clipboard.writeText(data.content);
-            showNotification('Clipboard updated from remote', 'success');
-            break;
-    }
-}
-
-async function connectAsClient(hostId) {
-    try {
-        const offerData = localStorage.getItem(`offer_${hostId}`);
-        if (!offerData) {
-            throw new Error('No active session found');
-        }
-        
-        const offer = JSON.parse(offerData);
-        
-        remotePeerConnection = new RTCPeerConnection(configuration);
-        
-        remotePeerConnection.ondatachannel = (event) => {
-            dataChannel = event.channel;
-            setupDataChannel(dataChannel);
-        };
-        
-        remotePeerConnection.ontrack = (event) => {
-            remoteStream = event.streams[0];
-            displayRemoteStream(remoteStream);
-            updateStatus('client', 'Connected!', 'success');
-            advancedFeatures.style.display = 'block';
-            sessionView.style.display = 'block';
-            sessionStartTime = Date.now();
-        };
-        
-        remotePeerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                storeCandidate('client', event.candidate);
-            }
-        };
-        
-        await remotePeerConnection.setRemoteDescription(offer);
-        const answer = await remotePeerConnection.createAnswer();
-        await remotePeerConnection.setLocalDescription(answer);
-        
-        updateStatus('client', 'Connected to remote host!', 'success');
-        
-    } catch (error) {
-        console.error('Error connecting:', error);
-        updateStatus('client', 'Connection failed: ' + error.message, 'error');
-    }
-}
-
-function displayRemoteStream(stream) {
-    if (!remoteCanvas || !ctx) return;
-    
-    remoteVideoElement = document.createElement('video');
-    remoteVideoElement.srcObject = stream;
-    remoteVideoElement.autoplay = true;
-    remoteVideoElement.playsInline = true;
-    remoteVideoElement.muted = true;
-    
-    remoteVideoElement.onloadedmetadata = () => {
-        remoteVideoElement.play();
-        drawFrame();
-    };
-    
-    function drawFrame() {
-        if (remoteVideoElement && remoteVideoElement.videoWidth) {
-            remoteCanvas.width = remoteVideoElement.videoWidth;
-            remoteCanvas.height = remoteVideoElement.videoHeight;
-            ctx.drawImage(remoteVideoElement, 0, 0, remoteCanvas.width, remoteCanvas.height);
-        }
-        requestAnimationFrame(drawFrame);
-    }
-}
-
-function generateConnectionId() {
-    return Math.random().toString(36).substring(2, 10).toUpperCase();
-}
-
-function updateStatus(role, message, type) {
-    const statusElement = role === 'host' ? hostStatus : clientStatus;
-    if (statusElement) {
-        statusElement.innerHTML = `<i class="fas fa-info-circle"></i> ${message}`;
-        statusElement.className = `status ${type}`;
-    }
-}
-
-function endSession() {
-    if (localPeerConnection) localPeerConnection.close();
-    if (remotePeerConnection) remotePeerConnection.close();
-    if (localStream) localStream.getTracks().forEach(t => t.stop());
-    if (mediaRecorder && isRecording) mediaRecorder.stop();
-    
-    sessionView.style.display = 'none';
-    advancedFeatures.style.display = 'none';
-    currentRole = null;
-    isRecording = false;
-    
-    updateStatus('host', 'Session ended', 'info');
-    updateStatus('client', 'Disconnected', 'info');
-}
-
-function storeCandidate(role, candidate) {
-    // Store for signaling (simplified for demo)
-    console.log(`${role} ICE candidate:`, candidate);
-}
-
-// Copy host ID
-if (copyHostIdBtn) {
-    copyHostIdBtn.addEventListener('click', () => {
-        const id = displayHostId.textContent;
-        navigator.clipboard.writeText(id);
-        showNotification('Connection ID copied!', 'success');
-    });
-}
-
-// Connect button
-if (connectBtn) {
-    connectBtn.addEventListener('click', async () => {
-        const hostId = remoteIdInput.value.trim().toUpperCase();
-        if (!hostId) {
-            updateStatus('client', 'Please enter a connection ID', 'error');
-            return;
-        }
-        await connectAsClient(hostId);
-    });
-}
-
-// Generate host ID
+// Event listeners for main buttons
 if (generateHostIdBtn) {
     generateHostIdBtn.addEventListener('click', async () => {
         if (localPeerConnection) {
@@ -1027,7 +1296,17 @@ if (generateHostIdBtn) {
     });
 }
 
-// Disconnect button
+if (connectBtn) {
+    connectBtn.addEventListener('click', async () => {
+        const hostId = remoteIdInput.value.trim().toUpperCase();
+        if (!hostId) {
+            updateStatus('client', 'Please enter a connection ID', 'error');
+            return;
+        }
+        await connectAsClient(hostId);
+    });
+}
+
 if (disconnectBtn) {
     disconnectBtn.addEventListener('click', () => {
         if (confirm('Disconnect from session?')) {
@@ -1036,14 +1315,13 @@ if (disconnectBtn) {
     });
 }
 
-// Mouse and keyboard controls
 if (mouseBtn) {
     mouseBtn.addEventListener('click', () => {
         isMouseControlActive = !isMouseControlActive;
         mouseBtn.classList.toggle('active', isMouseControlActive);
         mouseBtn.innerHTML = isMouseControlActive ? 
-            '<i class="fas fa-mouse-pointer"></i> Mouse Active' : 
-            '<i class="fas fa-mouse-pointer"></i> Mouse Disabled';
+            '<i class="fas fa-mouse-pointer"></i> <span class="btn-text">Mouse</span>' : 
+            '<i class="fas fa-mouse-pointer"></i> <span class="btn-text">Disabled</span>';
     });
 }
 
@@ -1052,12 +1330,28 @@ if (keyboardBtn) {
         isKeyboardControlActive = !isKeyboardControlActive;
         keyboardBtn.classList.toggle('active', isKeyboardControlActive);
         keyboardBtn.innerHTML = isKeyboardControlActive ? 
-            '<i class="fas fa-keyboard"></i> Keyboard Active' : 
-            '<i class="fas fa-keyboard"></i> Keyboard Disabled';
+            '<i class="fas fa-keyboard"></i> <span class="btn-text">Keyboard</span>' : 
+            '<i class="fas fa-keyboard"></i> <span class="btn-text">Disabled</span>';
+        
+        if (deviceType === 'mobile' && isKeyboardControlActive && virtualKeyboard) {
+            virtualKeyboard.style.display = 'block';
+        }
     });
 }
 
 // Initialize everything
-initAdvancedFeatures();
+initAllFeatures();
 
-console.log('RemoteDesk Pro initialized with advanced features!');
+// Check URL params for auto-connect
+const urlParams = new URLSearchParams(window.location.search);
+const connectId = urlParams.get('connect');
+if (connectId && remoteIdInput) {
+    remoteIdInput.value = connectId;
+    setTimeout(() => {
+        if (connectBtn) connectBtn.click();
+    }, 1000);
+}
+
+console.log('RemoteDesk Pro initialized with mobile support!');
+console.log('Device type:', deviceType);
+console.log('Touch device:', isTouchDevice);
